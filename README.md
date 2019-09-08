@@ -1,4 +1,6 @@
 # EC2 scheduler
+Scheduling script for AWS EC2 instances and autoscaling groups by Lambda.
+
 ## Prerequisities
  - Set tags to instances and autoscaling groups
  - create IAM role for lambda
@@ -33,6 +35,7 @@ Time definition in format START_HOUR-STOP-HOUR
 ...
 ```
 ### OFFPEAK
+Only for autoscaling groups
 Number of instances running out of working hours. 
 
 ### Special ussage
