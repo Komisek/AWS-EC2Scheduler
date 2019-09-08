@@ -534,6 +534,3 @@ def lambda_handler(event, context):
     main()
     asgUpdates()
     instanceUpdates()
-
-main()
-debug()
