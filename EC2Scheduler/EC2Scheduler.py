@@ -220,10 +220,10 @@ def isManual(resource_dict):
             return True
     except KeyError:
         try:
-            print("Instance %s nema tagy pro scheduling" % resource_dict['InstanceId'])
+            print("Instance %s haven't tags for scheduling" % resource_dict['InstanceId'])
             return "MissingTag"
         except KeyError:
-            print("Asg %s nema tagy pro scheduling" % resource_dict['AutoScalingGroupName'])
+            print("Asg %s haven't tags for scheduling" % resource_dict['AutoScalingGroupName'])
     else:
         return False
 
@@ -239,13 +239,13 @@ def activeNow(resource_dict):
         if nowTimestamp in range(startTimestamp, stopTimestamp):
             return True
     except KeyError:
-        print("Instance %s nema tagy pro scheduling" % resource_dict['InstanceId'])
+        print("Instance %s haven't tags for scheduling" % resource_dict['InstanceId'])
         return False
     except (ValueError, IndexError):
         try:
-            print("Spatne nastaveny cas u instance %s" % resource_dict['InstanceId'])
+            print("Wrong time set in instance %s" % resource_dict['InstanceId'])
         except KeyError:
-            print("Spatne nastaveny cas u asg %s" % resource_dict['AutoScalingGroupName'])
+            print("Wrong time set in asg %s" % resource_dict['AutoScalingGroupName'])
     else:
         return False
     
@@ -256,9 +256,9 @@ def activeToday(resource_dict):
             return True
     except KeyError:
         try:
-            print("Instance %s nema tagy pro scheduling" % resource_dict['InstanceId'])
+            print("Instance %s haven't tags for scheduling" % resource_dict['InstanceId'])
         except KeyError:
-            print("Asg %s nema tagy pro scheduling" % resource_dict['AutoScalingGroupName'])
+            print("Asg %s haven't tags for scheduling" % resource_dict['AutoScalingGroupName'])
     else:
         return False
 
@@ -268,7 +268,7 @@ def offpeak(resource_dict):
             return False
     except KeyError:
         try:
-            print("ASG %s nema tag pro offpeak konfiguraci " % resource_dict['AutoScalingGroupName'])
+            print("ASG %s haven't tags for offpeak configuration " % resource_dict['AutoScalingGroupName'])
         except KeyError:
             return False
     else:
@@ -355,7 +355,7 @@ def timeForSS(secureScanDay, secureScanStartTime, secureScanDuration):
         return False
 
 def securityScan(asg_list, instance_list):
-    print("Zapinam vsechny instance")
+    print("Security Scan Enabled - Starting all instances")
     for asg in asg_list:
         if asg["MinSize"] == 0:
             asgScaleUp.append(asg["AutoScalingGroupName"])
@@ -371,19 +371,14 @@ def securityScan(asg_list, instance_list):
             startEC2List.append(instance["InstanceId"])
             print((instance["InstanceId"], instance["State"]["Name"]))
 
-def cleanupAfterSS(instance_list):
-    print("Vypinam instance po security scanu")
-    for instance in instance_list:
-        try:
-            if instance["SecureScanState"] == "stopped":
-                stopEC2List.append(instance["InstanceId"])
-                delInstanceTag(ec2_client, instance["InstanceId"], "SecureScanState")
-        except KeyError:
-            pass
+def cleanupAfterSS(instanceId):
+    print("Stop instance %s after security scan" % (instanceId))
+    stopEC2List.append(instanceId)
+    delInstanceTag(ec2_client, instanceId, "SecureScanState")
         
 def asgUpdates():
     if startAsgList:
-        print("Zapinam HealthCheck u celkem %s ASG: %s" %(len(startAsgList), startAsgList))
+        print("Enable HealthCheck for %s ASGs: %s" %(len(startAsgList), startAsgList))
         for asg in startAsgList:
             try:
                 asg_client.resume_processes(AutoScalingGroupName=asg, ScalingProcesses=['HealthCheck'])
@@ -392,7 +387,7 @@ def asgUpdates():
                 pass
 
     if stopAsgList:
-        print("Vypinam HealthCheck u celkem %s ASG: %s" %(len(stopAsgList), stopAsgList))
+        print("Disable HealthCheck for %s ASGs: %s" %(len(stopAsgList), stopAsgList))
         for asg in stopAsgList:
             try:
                 asg_client.suspend_processes(AutoScalingGroupName=asg, ScalingProcesses=['HealthCheck'])
@@ -401,7 +396,7 @@ def asgUpdates():
                 pass
 
     if asgScaleUp:
-        print("Skaluju nahoru celkem %s ASG: %s" %(len(asgScaleUp), asgScaleUp))
+        print("Scale up %s ASGs: %s" %(len(asgScaleUp), asgScaleUp))
         for asg in asgScaleUp:
             if timeForSS(secureScanDay, secureScanStartTime, secureScanDuration) is False:
                 numInst=getPreviousAsgSize(asg_client, asg)["Value"]
@@ -418,7 +413,7 @@ def asgUpdates():
                 pass
 
     if asgScaleDown:
-        print("Skaluju dolu celkem %s ASG: %s" %(len(asgScaleDown), asgScaleDown))
+        print("Scale down %s ASGs: %s" %(len(asgScaleDown), asgScaleDown))
         for asg in asgScaleDown:
             numInst=getCurrentAsgSize(asg_client, asg)
             addAsgTag(asg_client, asg, "NUM_INST", numInst)
@@ -440,7 +435,7 @@ def instanceUpdates():
     Operations with instances start/stop
     """
     if startEC2List:
-        print("Startuji celkem %s instanci: %s" %(len(startEC2List), startEC2List))
+        print("Starting %s instances: %s" %(len(startEC2List), startEC2List))
         try:
             ec2_client.start_instances(InstanceIds=startEC2List)
         except ClientError as e:
@@ -448,7 +443,7 @@ def instanceUpdates():
                 pass
 
     if stopEC2List:
-        print("Vypinam celkem %s instanci: %s" %(len(stopEC2List), stopEC2List))
+        print("Stopping %s instances: %s" %(len(stopEC2List), stopEC2List))
         try:
             ec2_client.stop_instances(InstanceIds=stopEC2List)
         except ClientError as e:
@@ -462,13 +457,12 @@ def main():
         allInstances=getAllInstances(ec2_client)
         for inst in allInstances:
             if "SecureScanState" in inst:
-                print("Spoustim cleanup po security scanu")
-                cleanupAfterSS(allInstances)
+                cleanupAfterSS(inst["InstanceId"])
         for asg in getTagedAsgs(asg_client):
             if isManual(asg):
-                print("Tag manual u ASG %s je aktivni" % (asg["AutoScalingGroupName"]))
+                print("ASG %s - manual config: enabled" % (asg["AutoScalingGroupName"]))
             else:
-                print("Tag manual u ASG %s je neaktivni" % (asg["AutoScalingGroupName"]))
+                print("ASG %s - manual config: disabled" % (asg["AutoScalingGroupName"]))
                 try:
                     asg["NUM_INST"]
                 except KeyError:           
@@ -501,9 +495,9 @@ def main():
                     asgScaleDown.append(asg["AutoScalingGroupName"])
         for instance in getTagedInstances(ec2_client):
             if isManual(instance):
-                print("Tag manual u Instance %s je aktivni" % (instance["InstanceId"]))
+                print("Instance %s - manual config: enabled" % (instance["InstanceId"]))
             else:
-                print("Tag manual u Instance %s je neaktivni" % (instance["InstanceId"]))
+                print("Instance %s - manual config: disabled" % (instance["InstanceId"]))
                 activeNowV=activeNow(instance)
                 activeTodayV=activeToday(instance)
                 offpeakV=offpeak(instance)
@@ -534,3 +528,4 @@ def lambda_handler(event, context):
     main()
     asgUpdates()
     instanceUpdates()
+
