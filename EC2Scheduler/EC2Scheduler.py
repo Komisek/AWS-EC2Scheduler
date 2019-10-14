@@ -6,6 +6,8 @@ import os
 from datetime import datetime, timedelta
 from botocore.exceptions import ClientError
 
+# Version
+version = "14102019"
 
 # Declare clients
 region="eu-central-1"
@@ -22,13 +24,14 @@ asgScaleUp = []
 secureScanDay = str(os.environ["secureScanDay"])
 secureScanStartTime = str(os.environ["secureScanStartTime"])
 secureScanDuration = str(os.environ["secureScanDuration"])
+debugEnv = str(os.environ["debug"])
 tagList=["RUN:DAYS", "RUN:HOURS", "MANUAL", "OFFPEAK","NUM_INST", "SecureScanState"]
 asgKeys=["AutoScalingGroupName", "Tags", "Instances", "DesiredCapacity", "MaxSize", "MinSize", "SuspendedProcesses"] 
 ec2Keys=["InstanceId", "State", "Tags"]
 
 def listsClear():
     """
-    Clear list before run because Lambda caching global variables
+    Clear list before run because AWS Lambda caching global variables
     """
     startEC2List.clear()
     stopEC2List.clear()
@@ -37,28 +40,10 @@ def listsClear():
     asgScaleDown.clear()
     asgScaleUp.clear()
 
-def getInstancetData(DataDict):
-    Dict={}
-    for instance in DataDict:
-        if instance["Tags"] != None:
-            for key in ec2Keys:
-                Dict[key]=instance[key]
-            for tag in instance["Tags"]:
-                if tag["Key"] in tagList:
-                    Dict[tag["Key"]]=tag["Value"]
-    return Dict
-
-def getAsgData(DataDict):
-    Dict={}
-    if DataDict["Tags"] != None:
-        for key in asgKeys:
-            Dict[key]=DataDict[key]
-        for tag in DataDict["Tags"]:
-            if tag["Key"] in tagList:
-                Dict[tag["Key"]]=tag["Value"]
-    return Dict
-
 def getTagedInstances(ec2_client):
+    """
+    Return instances with tags in tagList
+    """
     try:
         List=[]
         responseDict = ec2_client.describe_instances(
@@ -77,6 +62,9 @@ def getTagedInstances(ec2_client):
         pass
 
 def getAllInstances(ec2_client):
+    """
+    Return all instances in account
+    """
     try:
         List=[]
         responseDict = ec2_client.describe_instances(
@@ -93,6 +81,9 @@ def getAllInstances(ec2_client):
         pass
 
 def getTagedAsgs(asg_client):
+    """
+    Return autoscaling groups with tags in tagList
+    """
     try:
         List=[]
         responseDict = asg_client.describe_auto_scaling_groups()
@@ -105,6 +96,9 @@ def getTagedAsgs(asg_client):
         pass
 
 def getAllAsgs(asg_client):
+    """
+    Return all autoscaling groups in account
+    """
     try:
         List=[]
         responseDict = asg_client.describe_auto_scaling_groups()
@@ -115,7 +109,37 @@ def getAllAsgs(asg_client):
         print(e.response['Error']['Code'])
         pass
 
+def getInstancetData(DataDict):
+    """
+    Return instances details
+    """
+    Dict={}
+    for instance in DataDict:
+        if instance["Tags"] != None:
+            for key in ec2Keys:
+                Dict[key]=instance[key]
+            for tag in instance["Tags"]:
+                if tag["Key"] in tagList:
+                    Dict[tag["Key"]]=tag["Value"]
+    return Dict
+
+def getAsgData(DataDict):
+    """
+    Return autoscaling group details
+    """
+    Dict={}
+    if DataDict["Tags"] != None:
+        for key in asgKeys:
+            Dict[key]=DataDict[key]
+        for tag in DataDict["Tags"]:
+            if tag["Key"] in tagList:
+                Dict[tag["Key"]]=tag["Value"]
+    return Dict
+
 def getInstanceStatus(client, instanceId):
+    """
+    Return instance state of instance. (running,stopped,...)
+    """
     try:
         responseDict = client.describe_instance_status(InstanceIds=[instanceId])
         return responseDict["InstanceStatuses"][0]["InstanceState"]["Name"]
@@ -124,6 +148,9 @@ def getInstanceStatus(client, instanceId):
         pass
 
 def getPreviousAsgSize(client, asgName):
+    """
+    Return previous instances value. After security scan or scale down.
+    """
     try:
         responseDict = client.describe_tags(
             Filters=[{
@@ -137,6 +164,9 @@ def getPreviousAsgSize(client, asgName):
         pass
 
 def getCurrentAsgSize(client, asgName):
+    """
+    Return number of running instances in autoscaling group.
+    """
     try:
         responseDict = client.describe_auto_scaling_groups(AutoScalingGroupNames=[asgName])
         return responseDict["AutoScalingGroups"][0]["DesiredCapacity"]
@@ -145,6 +175,9 @@ def getCurrentAsgSize(client, asgName):
         pass
 
 def addInstanceTag(client, instanceId, tagName, tagValue):
+    """
+    Add instance tag.
+    """
     try:
         client.create_tags(
             Resources=[
@@ -160,6 +193,9 @@ def addInstanceTag(client, instanceId, tagName, tagValue):
         pass
 
 def delInstanceTag(client, instanceId, tagName):
+    """
+    Delete instance tag.
+    """
     try:
         client.delete_tags(
             Resources=[
@@ -174,6 +210,9 @@ def delInstanceTag(client, instanceId, tagName):
         pass
 
 def addAsgTag(client, asgName, tagName, tagValue):
+    """
+    Add tag to autoscaling group.
+    """
     try:
         client.create_or_update_tags(
             Tags=[{
@@ -189,6 +228,9 @@ def addAsgTag(client, asgName, tagName, tagValue):
         pass
 
 def delAsgTag(client, asgName, tagName):
+    """
+    Delete tag from autoscaling group.
+    """
     try:
         client.delete_tags(
             Tags=[{
@@ -202,6 +244,9 @@ def delAsgTag(client, asgName, tagName):
         pass
 
 def getOffpeakValue(client, asgName):
+    """
+    Return value offpeak configuration from asg
+    """
     try:
         responseDict = client.describe_tags(
             Filters=[{
@@ -215,6 +260,9 @@ def getOffpeakValue(client, asgName):
         pass
 
 def isManual(resource_dict):
+    """
+    Check if manual tag is enabled
+    """
     try:
         if resource_dict["RUN:DAYS"].lower() == 'manual' or resource_dict["RUN:HOURS"].lower() == 'manual':
             return True
@@ -228,6 +276,9 @@ def isManual(resource_dict):
         return False
 
 def activeNow(resource_dict):
+    """
+    Check RUN:HOURS tag if instance can run now.
+    """
     try:
         nowTimestamp = int(datetime.now().strftime("%H"))*60+int(datetime.now().strftime("%M"))
         hoursActive = resource_dict["RUN:HOURS"].split("-")
@@ -250,6 +301,9 @@ def activeNow(resource_dict):
         return False
     
 def activeToday(resource_dict):
+    """
+    Check RUN:DAYS tag if instance or asg can run today
+    """
     nowDay = datetime.today().strftime("%a").upper()
     try:
         if nowDay in resource_dict["RUN:DAYS"]:
@@ -263,6 +317,9 @@ def activeToday(resource_dict):
         return False
 
 def offpeak(resource_dict):
+    """
+    Check offpeak configuration for autoscaling group.
+    """
     try:
         if int(resource_dict["OFFPEAK"]) == -1:
             return False
@@ -273,9 +330,6 @@ def offpeak(resource_dict):
             return False
     else:
         return True
-
-def isSpecialDay(secureScanDay):
-    pass
 
 def timeForSS(secureScanDay, secureScanStartTime, secureScanDuration):
     """
@@ -355,6 +409,9 @@ def timeForSS(secureScanDay, secureScanStartTime, secureScanDuration):
         return False
 
 def securityScan(asg_list, instance_list):
+    """
+    Run security scan. Scale up all autoscaling groups. Start all stopped instances. 
+    """
     print("Security Scan Enabled - Starting all instances")
     for asg in asg_list:
         if asg["MinSize"] == 0:
@@ -372,11 +429,19 @@ def securityScan(asg_list, instance_list):
             print((instance["InstanceId"], instance["State"]["Name"]))
 
 def cleanupAfterSS(instanceId):
+    """
+    Delete security scan tag from instances, after security scan is ended.
+    """
     print("Stop instance %s after security scan" % (instanceId))
     stopEC2List.append(instanceId)
     delInstanceTag(ec2_client, instanceId, "SecureScanState")
         
 def asgUpdates():
+    """
+    Operations with autoscaling groups 
+    - enable or disable healthcheck
+    - scale up or down
+    """
     if startAsgList:
         print("Enable HealthCheck for %s ASGs: %s" %(len(startAsgList), startAsgList))
         for asg in startAsgList:
@@ -432,7 +497,7 @@ def asgUpdates():
 
 def instanceUpdates():
     """
-    Operations with instances start/stop
+    Operations with instances - start/stop
     """
     if startEC2List:
         print("Starting %s instances: %s" %(len(startEC2List), startEC2List))
@@ -451,6 +516,9 @@ def instanceUpdates():
                 pass
 
 def main():
+    """
+    Main function 
+    """
     if timeForSS(secureScanDay, secureScanStartTime, secureScanDuration) is True and int(secureScanDuration) > 0:
         securityScan(getAllAsgs(asg_client), getAllInstances(ec2_client))
     else:
@@ -507,6 +575,9 @@ def main():
                     stopEC2List.append(instance["InstanceId"]) 
 
 def debug():
+    """
+    Print important run variables
+    """
     print("startEC2List - %s" % (startEC2List))
     print("stopEC2List - %s" % (stopEC2List))
     print("startAsgList - %s" % (startAsgList))
@@ -523,9 +594,12 @@ def lambda_handler(event, context):
     """
     Call AWS lambda function
     """
-    print("Running EC2 Scheduler %s" % datetime.today())
+    print("Running EC2 Scheduler %s - version %s" % (datetime.today(), version))
     listsClear()
     main()
     asgUpdates()
     instanceUpdates()
+
+    if debugEnv == "True":
+        debug()
 
