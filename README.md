@@ -45,6 +45,8 @@ RUN:HOURS - 06:00-01:00 set running hours 00:00 to 01:00 and 06:00 to 23:59
 
 OFFPEAK = -1 - Affects ASG group with disabling HealtCheck. With this settings u can stop instance in ASG without terminating.
 
+RUN:CONTROL - if is set to "True", same function as manual tag in RUN:DAYS or RUN:HOURS
+
 ## Lambda environment variables for security scan
 ```
 secureScanDay - Day in month (number) or day of week (0#1 first sunday in month)

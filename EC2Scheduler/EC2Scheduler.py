@@ -24,8 +24,11 @@ asgScaleUp = []
 secureScanDay = str(os.environ["secureScanDay"])
 secureScanStartTime = str(os.environ["secureScanStartTime"])
 secureScanDuration = str(os.environ["secureScanDuration"])
-debugEnv = str(os.environ["debug"])
-tagList=["RUN:DAYS", "RUN:HOURS", "MANUAL", "OFFPEAK","NUM_INST", "SecureScanState"]
+try:
+    debugEnv = str(os.environ["debug"])
+except:
+    debugEnv = "False"
+tagList=["RUN:DAYS", "RUN:HOURS", "RUN:CONTROL", "MANUAL", "OFFPEAK","NUM_INST", "SecureScanState"]
 asgKeys=["AutoScalingGroupName", "Tags", "Instances", "DesiredCapacity", "MaxSize", "MinSize", "SuspendedProcesses"] 
 ec2Keys=["InstanceId", "State", "Tags"]
 
@@ -130,12 +133,15 @@ def getInstancetData(DataDict):
     """
     Dict={}
     for instance in DataDict:
-        if instance["Tags"] != None:
-            for key in ec2Keys:
-                Dict[key]=instance[key]
-            for tag in instance["Tags"]:
-                if tag["Key"] in tagList:
-                    Dict[tag["Key"]]=tag["Value"]
+        try:
+            if instance["Tags"] != None:
+                for key in ec2Keys:
+                    Dict[key]=instance[key]
+                for tag in instance["Tags"]:
+                    if tag["Key"] in tagList:
+                        Dict[tag["Key"]]=tag["Value"]
+        except:
+            pass
     return Dict
 
 def getAsgData(DataDict):
@@ -327,6 +333,18 @@ def isManual(resource_dict):
             return "MissingTag"
         except KeyError:
             print("Asg %s haven't tags for scheduling" % resource_dict['AutoScalingGroupName'])
+    else:
+        return False
+
+def runControl(resource_dict):
+    """
+    Check if run control tag is enabled
+    """
+    try:
+        if resource_dict["RUN:CONTROL"].lower() == 'true':
+            return True
+    except KeyError:
+        return False
     else:
         return False
 
@@ -676,8 +694,8 @@ def main():
         # Check instances state and tags
         for instance in getTagedInstances(ec2_client):
             # check if tag manual is included
-            if isManual(instance):
-                print("Instance %s - manual config: enabled" % (instance["InstanceId"]))
+            if isManual(instance) or runControl(instance):
+                print("Instance %s - manual config or run control: enabled" % (instance["InstanceId"]))
             else:
                 print("Instance %s - manual config: disabled" % (instance["InstanceId"]))
                 activeNowV=activeNow(instance)
@@ -718,4 +736,3 @@ def lambda_handler(event, context):
 
     if debugEnv == "True":
         debug()
-
