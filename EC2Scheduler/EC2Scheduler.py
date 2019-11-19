@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from botocore.exceptions import ClientError
 
 # Version
-version = "14102019"
+version = "16102019"
 
 # Declare clients
 region="eu-central-1"
@@ -46,6 +46,9 @@ def listsClear():
 def getTagedInstances(ec2_client):
     """
     Return instances with tags in tagList
+    
+    @param ec2 boto3 client
+    @return AWS response as dict
     """
     try:
         List=[]
@@ -67,6 +70,9 @@ def getTagedInstances(ec2_client):
 def getAllInstances(ec2_client):
     """
     Return all instances in account
+
+    @param ec2 boto3 client
+    @return AWS response as dict
     """
     try:
         List=[]
@@ -86,6 +92,9 @@ def getAllInstances(ec2_client):
 def getTagedAsgs(asg_client):
     """
     Return autoscaling groups with tags in tagList
+
+    @param asg boto3 client
+    @return AWS response as dict
     """
     try:
         List=[]
@@ -101,6 +110,9 @@ def getTagedAsgs(asg_client):
 def getAllAsgs(asg_client):
     """
     Return all autoscaling groups in account
+
+    @param asg boto3 client
+    @return AWS response as dict
     """
     try:
         List=[]
@@ -115,6 +127,9 @@ def getAllAsgs(asg_client):
 def getInstancetData(DataDict):
     """
     Return instances details
+
+    @param DataDict - instances list as a dict
+    @return AWS response as dict
     """
     Dict={}
     for instance in DataDict:
@@ -132,6 +147,9 @@ def getInstancetData(DataDict):
 def getAsgData(DataDict):
     """
     Return autoscaling group details
+
+    @param autoscaling groups list as a dict
+    @return AWS response as dict
     """
     Dict={}
     if DataDict["Tags"] != None:
@@ -145,6 +163,10 @@ def getAsgData(DataDict):
 def getInstanceStatus(client, instanceId):
     """
     Return instance state of instance. (running,stopped,...)
+
+    @param client - ec2 boto3 client
+    @param instanceID - AWS instanceID
+    @return instance state string
     """
     try:
         responseDict = client.describe_instance_status(InstanceIds=[instanceId])
@@ -156,6 +178,10 @@ def getInstanceStatus(client, instanceId):
 def getPreviousAsgSize(client, asgName):
     """
     Return previous instances value. After security scan or scale down.
+
+    @param client - asg boto3 client
+    @param asgName - AWS autoscaling group name
+    @return value from asg tag
     """
     try:
         responseDict = client.describe_tags(
@@ -172,6 +198,10 @@ def getPreviousAsgSize(client, asgName):
 def getCurrentAsgSize(client, asgName):
     """
     Return number of running instances in autoscaling group.
+    
+    @param client - asg boto3 client
+    @param asgName - AWS autoscaling group name
+    @return value from asg tag
     """
     try:
         responseDict = client.describe_auto_scaling_groups(AutoScalingGroupNames=[asgName])
@@ -183,6 +213,11 @@ def getCurrentAsgSize(client, asgName):
 def addInstanceTag(client, instanceId, tagName, tagValue):
     """
     Add instance tag.
+
+    @param client - ec2 boto3 client
+    @param instanceId - AWS instanceID
+    @param tagName - string
+    @param tagValue - string 
     """
     try:
         client.create_tags(
@@ -201,6 +236,10 @@ def addInstanceTag(client, instanceId, tagName, tagValue):
 def delInstanceTag(client, instanceId, tagName):
     """
     Delete instance tag.
+
+    @param client - ec2 boto3 client
+    @param instanceId - AWS instanceID
+    @param tagName - string
     """
     try:
         client.delete_tags(
@@ -218,6 +257,11 @@ def delInstanceTag(client, instanceId, tagName):
 def addAsgTag(client, asgName, tagName, tagValue):
     """
     Add tag to autoscaling group.
+
+    @param client - asg boto3 client
+    @param asgName - AWS autoscaling group name
+    @param tagName - string
+    @param tagValue - string 
     """
     try:
         client.create_or_update_tags(
@@ -236,6 +280,10 @@ def addAsgTag(client, asgName, tagName, tagValue):
 def delAsgTag(client, asgName, tagName):
     """
     Delete tag from autoscaling group.
+
+    @param client - asg boto3 client
+    @param asgName - AWS autoscaling group name
+    @param tagName - string
     """
     try:
         client.delete_tags(
@@ -252,6 +300,10 @@ def delAsgTag(client, asgName, tagName):
 def getOffpeakValue(client, asgName):
     """
     Return value offpeak configuration from asg
+
+    @param client - asg boto3 client
+    @param asgName - AWS autoscaling group name
+    @return value from asg tag
     """
     try:
         responseDict = client.describe_tags(
@@ -268,6 +320,9 @@ def getOffpeakValue(client, asgName):
 def isManual(resource_dict):
     """
     Check if manual tag is enabled
+
+    @param dict
+    @return boolean or MissingTag
     """
     try:
         if resource_dict["RUN:DAYS"].lower() == 'manual' or resource_dict["RUN:HOURS"].lower() == 'manual':
@@ -296,6 +351,14 @@ def runControl(resource_dict):
 def activeNow(resource_dict):
     """
     Check RUN:HOURS tag if instance can run now.
+
+    time record examples:
+    01:00-20:00 (run from 1AM to 8PM)
+    06:00-17:00 (run from 6AM to 5PM)
+    06:00-01:00 (run from 6AM to 1AM next day)
+
+    @param dict
+    @return boolean
     """
     try:
         nowTimestamp = int(datetime.now().strftime("%H"))*60+int(datetime.now().strftime("%M"))
@@ -321,6 +384,12 @@ def activeNow(resource_dict):
 def activeToday(resource_dict):
     """
     Check RUN:DAYS tag if instance or asg can run today
+
+    List of instance working days 
+    [MON,TUE,WED,THU,FRI,SAT,SUN]
+
+    @param dict
+    @return boolean
     """
     nowDay = datetime.today().strftime("%a").upper()
     try:
@@ -337,6 +406,13 @@ def activeToday(resource_dict):
 def offpeak(resource_dict):
     """
     Check offpeak configuration for autoscaling group.
+
+    Number of instances running out of working hours.
+
+    OFFPEAK = -1 - Affects ASG group with disabling HealtCheck. With this settings u can stop instance in ASG without terminating.
+
+    @param dict
+    @return boolean
     """
     try:
         if int(resource_dict["OFFPEAK"]) == -1:
@@ -354,19 +430,30 @@ def timeForSS(secureScanDay, secureScanStartTime, secureScanDuration):
     Check if is time for security scan - inputs scanDay, start hour and ruration in hours
     Append to list cron check_trigger result (True/False)
     Returning True if one of results is True
+
+    @param secureScanDay - str (num day 1-31 or day in week 0#1-6#5)
+    @param secureScanDuration - str
+    @param secureScanStartTime - str
+    @return boolean
+
+
     """
     resultsList=[]
     curTime=time.localtime(time.time())[:5]
     hours=int(secureScanStartTime)+int(secureScanDuration)
     days=hours//24
-
+    
+    # Check special run day record (0#1 etc.)
     if "#" in secureScanDay:
+        # Check duration of SS
         if int(secureScanDuration) == 1:
             resultsList.append(cronex.CronExpression("* "+secureScanStartTime+" * * "+secureScanDay).check_trigger(curTime))
         elif hours < 24:
             resultsList.append(cronex.CronExpression("* "+secureScanStartTime+"-"+str(int(secureScanStartTime)+int(secureScanDuration))+" * * "+secureScanDay).check_trigger(curTime))
         else:
+            # Duration is 24 hours
             if hours == 24:
+                # Check if duration going to next week
                 if int(secureScanDay.split("#")[0])+1 > 6:
                     nextDay="0#"+int(secureScanDay.split("#")[1])+1
                 else:
@@ -374,7 +461,9 @@ def timeForSS(secureScanDay, secureScanStartTime, secureScanDuration):
                 resultsList.append(cronex.CronExpression("* "+secureScanStartTime+"-23"+" * * "+secureScanDay).check_trigger(curTime))
                 resultsList.append(cronex.CronExpression("* 0-1 * * "+nextDay).check_trigger(curTime))
             else:
+                # Duration is 24 to 47 hours
                 if days == 1:
+                    # Check if duration going to next week
                     if int(secureScanDay.split("#")[0])+1 > 6:
                         lastDay="0#"+str(int(secureScanDay.split("#")[1])+1)
                     else:
@@ -382,7 +471,9 @@ def timeForSS(secureScanDay, secureScanStartTime, secureScanDuration):
                     resultsList.append(cronex.CronExpression("* "+secureScanStartTime+"-23"+" * * "+secureScanDay).check_trigger(curTime))
                     resultsList.append(cronex.CronExpression("* 0"+str(hours-24)+" * * "+lastDay).check_trigger(curTime)) 
                 else:
+                    # Duration is 48 hours and more
                     splitDayNumbers=secureScanDay.split("#")
+                    # SS fit in single week
                     if int(splitDayNumbers[0])+days <= 6:
                         nextDay=",".join(str(i) for i in range(int(splitDayNumbers[0])+1,int(splitDayNumbers[0])+days))+"#"+splitDayNumbers[1]
                         lastDay=str(int(splitDayNumbers[0])+days)+"#"+splitDayNumbers[1]
@@ -390,6 +481,7 @@ def timeForSS(secureScanDay, secureScanStartTime, secureScanDuration):
                         resultsList.append(cronex.CronExpression("* 0-23 * * "+nextDay).check_trigger(curTime))
                         resultsList.append(cronex.CronExpression("* 0-"+str(hours-(24*days))+" * * "+lastDay).check_trigger(curTime))
                     else:
+                        # SS duration goint to next week
                         if ((int(splitDayNumbers[0])+days+1)//7) == 1:
                             if int(splitDayNumbers[0])+1 == 7:
                                 nextWeek=",".join(str(i) for i in range(0,(int(splitDayNumbers[0])+days)-7))+"#"+str(int(splitDayNumbers[1])+1)
@@ -404,19 +496,23 @@ def timeForSS(secureScanDay, secureScanStartTime, secureScanDuration):
                         else:
                             print("Longer run than week is not implemented")
     else:
+        # Check duration of SS
         if int(secureScanDuration) == 1:
             resultsList.append(cronex.CronExpression("* "+secureScanStartTime+" "+secureScanDay+" * *").check_trigger(curTime))
         elif hours < 24:
             resultsList.append(cronex.CronExpression("* "+secureScanStartTime+"-"+str(int(secureScanStartTime)+int(secureScanDuration))+" "+secureScanDay+" * *").check_trigger(curTime))
         else:
+            # Duration is 24 hours
             if hours == 24:
                 resultsList.append(cronex.CronExpression("* "+secureScanStartTime+"-23"+" "+secureScanDay+" * *").check_trigger(curTime))
                 resultsList.append(cronex.CronExpression("* 0-1 "+str(int(secureScanDay)+1)+" * *").check_trigger(curTime))
             else:
+                # Duration is 24 to 47 hours
                 if days == 1:
                     resultsList.append(cronex.CronExpression("* "+secureScanStartTime+"-23"+" "+secureScanDay+" * *").check_trigger(curTime))
                     resultsList.append(cronex.CronExpression("* 0-"+str(hours-24)+" "+str(int(secureScanDay)+1)+" * *").check_trigger(curTime)) 
                 else:
+                    # Duration is 48 hours and more
                     resultsList.append(cronex.CronExpression("* "+secureScanStartTime+"-23"+" "+secureScanDay+" * *").check_trigger(curTime))
                     resultsList.append(cronex.CronExpression("* 0-23 "+str(int(secureScanDay)+1)+"-"+str(int(secureScanDay)+days-1)+" * *").check_trigger(curTime))
                     resultsList.append(cronex.CronExpression("* 0-"+str(hours-(24*days))+" "+str(int(secureScanDay)+days)+" * *").check_trigger(curTime))
@@ -429,6 +525,10 @@ def timeForSS(secureScanDay, secureScanStartTime, secureScanDuration):
 def securityScan(asg_list, instance_list):
     """
     Run security scan. Scale up all autoscaling groups. Start all stopped instances. 
+
+    @param asg_list - list
+    @param instance_list - list
+
     """
     print("Security Scan Enabled - Starting all instances")
     for asg in asg_list:
@@ -449,6 +549,8 @@ def securityScan(asg_list, instance_list):
 def cleanupAfterSS(instanceId):
     """
     Delete security scan tag from instances, after security scan is ended.
+
+    @param instanceId - AWS instance id
     """
     print("Stop instance %s after security scan" % (instanceId))
     stopEC2List.append(instanceId)
@@ -537,18 +639,23 @@ def main():
     """
     Main function 
     """
+    # Check if is time for SecurityScan
     if timeForSS(secureScanDay, secureScanStartTime, secureScanDuration) is True and int(secureScanDuration) > 0:
         securityScan(getAllAsgs(asg_client), getAllInstances(ec2_client))
     else:
         allInstances=getAllInstances(ec2_client)
+        # Cleanup after security scan run only if AWS response include "SecureScanState" tag
         for inst in allInstances:
             if "SecureScanState" in inst:
                 cleanupAfterSS(inst["InstanceId"])
+        # Check autoscaling groups state and tags
         for asg in getTagedAsgs(asg_client):
+            # check if tag manual is included
             if isManual(asg):
                 print("ASG %s - manual config: enabled" % (asg["AutoScalingGroupName"]))
             else:
                 print("ASG %s - manual config: disabled" % (asg["AutoScalingGroupName"]))
+                # Get previous number of instances in autoscaling group. When tag is not defined set to 0
                 try:
                     asg["NUM_INST"]
                 except KeyError:           
@@ -556,16 +663,19 @@ def main():
                 activeNowV=activeNow(asg)
                 activeTodayV=activeToday(asg)
                 offpeakV=offpeak(asg)
+                # Autoscalingroup state is (HealthCheck - suspended, running time true, ofpeeak = -1) -> enable healthcheck
                 if (activeNowV is True 
                         and activeTodayV is True 
                         and next((True for item in asg["SuspendedProcesses"] if item["ProcessName"] == "HealthCheck"),False) is True 
                         and offpeakV is False):
                     startAsgList.append(asg["AutoScalingGroupName"])
+                # Autoscalingroup state is (HealthCheck - not suspended, running time false, , ofpeeak = -1) -> disable healthcheck
                 elif (
                         (activeNowV is False or activeTodayV is False) 
                         and asg["SuspendedProcesses"] == [] 
                         and offpeakV is False):
                     stopAsgList.append(asg["AutoScalingGroupName"])
+                # Autoscalingroup state is (running time true, ofpeeak >= 0, Min size is 0 or less than NUM_INST) -> scale up
                 elif (offpeakV is True 
                         and activeNowV is True 
                         and activeTodayV is True 
@@ -574,12 +684,16 @@ def main():
                             or int(asg["NUM_INST"]) > asg["MinSize"] 
                             or asg["MinSize"] < int(asg["OFFPEAK"]))):
                     asgScaleUp.append(asg["AutoScalingGroupName"])
+                # Autoscalingroup state is (running time false, ofpeeak >= 0, Min size is more than OFFPEAK) -> scale down
                 elif (offpeakV is True 
                         and (activeNowV is False or activeTodayV is False) 
                         and asg["SuspendedProcesses"] == [] 
                         and asg["MinSize"] > int(asg["OFFPEAK"])):
                     asgScaleDown.append(asg["AutoScalingGroupName"])
+
+        # Check instances state and tags
         for instance in getTagedInstances(ec2_client):
+            # check if tag manual is included
             if isManual(instance) or runControl(instance):
                 print("Instance %s - manual config or run control: enabled" % (instance["InstanceId"]))
             else:
@@ -587,8 +701,10 @@ def main():
                 activeNowV=activeNow(instance)
                 activeTodayV=activeToday(instance)
                 offpeakV=offpeak(instance)
+                # Instance state is (running time true, state stopped) -> start instance
                 if activeNowV is True and activeTodayV is True and instance["State"]["Name"] == "stopped" and offpeakV is False:
                     startEC2List.append(instance["InstanceId"])
+                # Instance state is (running time false, state running) -> stop instance
                 elif (activeNowV is False or activeTodayV is False) and instance["State"]["Name"] == "running" and offpeakV is False:
                     stopEC2List.append(instance["InstanceId"]) 
 
